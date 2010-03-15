@@ -303,7 +303,7 @@ class Migrator
             {
                 $user = $matches[1];
             }
-            if (preg_match('/password=([^;]+)(;|\z)/', $opts[Migrator::OPT_PDO_DSN], $matches))
+            if (preg_match('/pass=([^;]+)(;|\z)/', $opts[Migrator::OPT_PDO_DSN], $matches))
             {
                 $pass = $matches[1];
             }
