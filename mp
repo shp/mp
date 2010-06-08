@@ -38,6 +38,9 @@ $shortopts  = "";
 $shortopts .= "x:"; // -r --dsn <PDO DSN> => A PDO DSN
 $longopts[] = "dsn:";
 
+$shortopts .= "c:"; // -c --schema <schema> => The schema to use for the mp_version table
+$longopts[] = "schema:";
+
 $shortopts .= "f"; // -f --version-in-file => Use migrations/version.txt to store the version
 $longopts[] = "version-in-file";
 
@@ -91,6 +94,7 @@ migrate usage:
     in your database in a table named public.mp_version.
     If you do not supply a dsn then you will need to use the -f flag to tell mp
     to use the filesystem for storage of the version.
+  -c --schema Specify a schema to use (default: 'public') for the mp_version table
   -f --version-in-file Store the version on the filesystem.
 
   COMMANDS
@@ -135,8 +139,13 @@ if (isset($cliOpts['d']))
 if (isset($cliOpts['x']))
 {
     // use DB
+    $versionProviderOpts = array();
+    if (isset($cliOpts['c']))
+    {
+        $versionProviderOpts[MigratorVersionProviderDB::OPT_SCHEMA] = $cliOpts['c'];
+    }
     $opts[Migrator::OPT_PDO_DSN] = $cliOpts['x'];
-    $opts[Migrator::OPT_VERSION_PROVIDER] = new MigratorVersionProviderDB();
+    $opts[Migrator::OPT_VERSION_PROVIDER] = new MigratorVersionProviderDB($versionProviderOpts);
 }
 else
 {
