@@ -50,6 +50,10 @@ $longopts[] = "dir";
 $shortopts .= "m::"; // -m --migrate <targetVersion> => Version to migrate to
 $longopts[] = "migrate::";
 
+$shortopts .= "M::"; // -m --migrate <targetVersion> => Version to migrate to
+$longopts[] = "migrate-direct::"; // use direct migrations in situations if available and applicable
+// no short option is provided because it would probably be very easy to blow away a database using this option
+
 $shortopts .= "r"; // -r --clean => run clean() first
 $longopts[] = "clean";
 
@@ -73,6 +77,7 @@ $longopts[] = "quiet";
 
 $shortopts .= "h";  // -h --help => print help
 $longopts[] = "help";
+
 
 if (version_compare(phpversion(), "5.3.0", '>='))
 {
@@ -106,6 +111,8 @@ migrate usage:
   -m --migrate <TargetVersion> or 0|up|down|head|redo
      * redo is an alias for down + up
   -l --list List all migrations in VERSION - DESCRIPTION format
+  -M --migrate-direct Like regular -m, but use direct migrations in situations if possible
+     * BE AWARE THAT USING DIRECT MIGRATIONS WILL FIRST RUN CLEAN
 
   OPTIONS
   -v --verbose Verbose messages
@@ -219,7 +226,32 @@ try {
             exit($ok === true ? 0 : 1);
         }
     }
+    if (isset($cliOpts['M']))
+    {
+        $targetVersion = $cliOpts['M'];
+        if ($targetVersion === false)
+        {
+            $targetVersion = Migrator::VERSION_HEAD;
+        }
+        if ($targetVersion === 'redo')
+        {
+            $ok = $m->migrateToVersion(Migrator::VERSION_DOWN);
+            if ($ok)
+            {
+                $ok = $m->migrateToVersion(Migrator::VERSION_UP);
+            }
+            exit($ok === true ? 0 : 1);
+        }
+        else
+        {
+            $ok = $m->migrateToVersion($targetVersion, true);
+            exit($ok === true ? 0 : 1);
+        }
+    }
 } catch (Exception $e) {
-    print "Error running migration: " . $e->getMessage() . "\n";
+    print "Error running migration: " . $e->getMessage() . "\n" . print_r($e->getTrace(), true) . "\n";
     exit(1);
+}
+
+function migrateTo($version) { // quick and dirty helper function
 }

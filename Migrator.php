@@ -190,6 +190,50 @@ abstract class Migration
 }
 
 /**
+ * Abstract base class for a direct migration.
+ *
+ * IMPORTANT!!!  DIRECT MIGRATIONS BY THEIR VERY NATURE TEND TO WIPE ALL DATA IN A DATABASE!
+ * THEY ARE ONLY TO BE USED IN SITUATIONS WHERE YOU ONLY CARE ABOUT THE SCHEMA!
+ *
+ * A direct migration is different from a regular migration because it has one extra method: 'direct'
+ * The direct method is a shortcut to go from a clean database state directly to the target migration.
+ *
+ * Direct migrations are provided mainly for efficiency purposes for quickly wiping all data and resetting
+ * to a given schema.
+ *
+ * e.g.  Given migrations:
+ *     0 - "clean state"
+ *     1 - "first migration"
+ *     2 - "second migration" - CURRENT DATABASE STATE
+ *     3 - "third migration"
+ *     4 - "fourth migration" - DIRECT MIGRATION
+ *     5 - "fifth migration"
+ *
+ * Normally, a command to migrate from current (2) to 5 would cause three up migrations to be executed.
+ * However, with direct migrations enabled (they aren't by default), this operation would instead cause a
+ * clean, followed by a direct to 4, followed by an up from 4 to 5.
+ *
+ * In this trivial example, this is the same number of operations, but in a situation where you might
+ * want to reset a database to a clean slate often (for example, in demo situations), and you have 30+
+ * migrations, this can save you some serious time
+ */
+abstract class DirectMigration extends Migration
+{
+    /**
+     * Code to migration *to* this migration.
+     *
+     * @throws object Exception If any exception is thrown the migration will be reverted.
+     */
+    abstract public function direct();
+    /**
+     * Code to handle cleanup of a failed direct() migration.
+     *
+     * @param object Migrator
+     */
+    public function directRollback() {}
+}
+
+/**
  * Exception that should be thrown by a {@link object Migration Migration's} down() method if the migration is irreversible (ie a one-way migration).
  */
 class MigrationOneWayException extends Exception {}
@@ -234,6 +278,7 @@ class Migrator
 
     const DIRECTION_UP                   = 'up';
     const DIRECTION_DOWN                 = 'down';
+    const DIRECTION_DIRECT               = 'direct';
 
     const VERSION_ZERO                   = '0';
     const VERSION_UP                     = 'up';
@@ -622,7 +667,7 @@ END;
                 'migrateRollbackF'  => 'upRollback',
             );
         }
-        else
+        elseif ($direction === Migrator::DIRECTION_DOWN)
         {
             $info = array(
                 'actionName'        => 'Downgrade',
@@ -630,11 +675,19 @@ END;
                 'migrateRollbackF'  => 'downRollback',
             );
         }
+        elseif ($direction === Migrator::DIRECTION_DIRECT)
+        {
+            $info = array(
+                'actionName'        => 'Direct',
+                'migrateF'          => 'direct',
+                'migrateRollbackF'  => 'directRollback',
+            );
+        }
         $migration = $this->instantiateMigration($migrationName);
         $this->logMessage("Running {$migrationName} {$info['actionName']}: " . $migration->description() . "\n", false);
         try {
             $migration->$info['migrateF']($this);
-            if ($direction === Migrator::DIRECTION_UP)
+            if ($direction === Migrator::DIRECTION_UP || $direction === Migrator::DIRECTION_DIRECT)
             {
                 $this->setVersion($migrationName);
             }
@@ -687,7 +740,7 @@ END;
      * @param string The Version.
      * @return boolean TRUE if migration successfully ended on specified version.
      */
-    public function migrateToVersion($toVersion)
+    public function migrateToVersion($toVersion, $useDirectLinks = false)
     {
         $this->logMessage("\n");
 
@@ -761,7 +814,28 @@ END;
 
         $actionName = ($direction === Migrator::DIRECTION_UP ? 'Upgrade' : 'Downgrade');
         $this->logMessage("{$actionName} from version {$currentVersion} to {$toVersion}.\n");
-        while ($currentVersion !== $toVersion) {
+
+        $ok = true; // CONTROL-FLOW HACK!!
+
+        if ($direction === Migrator::DIRECTION_UP && $useDirectLinks) {
+            // reverse search starting from $toVersion to find the first available DirectMigration
+            $directLinkVersion = $toVersion;
+            while ($directLinkVersion && $directLinkVersion !== $currentVersion && ! ($this->instantiateMigration($directLinkVersion) instanceof DirectMigration)) {
+                $directLinkVersion = $this->findNextMigration($directLinkVersion, Migrator::DIRECTION_DOWN);
+            }
+            if ($directLinkVersion !== $currentVersion && $this->instantiateMigration($directLinkVersion) instanceof DirectMigration) {
+                // Cool, we found a usable DirectMigration.
+                // (Technically, the second part of this conditional was unnecessary, but I'm paranoid)
+
+                $ok = $this->runMigration($directLinkVersion, Migrator::DIRECTION_DIRECT);
+                if ($ok) {
+                    $currentVersion = $directLinkVersion;
+                    $this->logMessage("Current version now {$currentVersion}\n", true);
+                }
+            }
+        }
+
+        while ($ok && $currentVersion !== $toVersion) {
             if ($direction === Migrator::DIRECTION_UP)
             {
                 $nextMigration = $this->findNextMigration($currentVersion, $direction);
