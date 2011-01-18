@@ -249,7 +249,7 @@ try {
         }
     }
 } catch (Exception $e) {
-    print "Error running migration: " . $e->getMessage() . "\n" . print_r($e->getTrace(), true) . "\n";
+    print "Error running migration: " . $e->getMessage() . "\n";
     exit(1);
 }
 

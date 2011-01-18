@@ -827,6 +827,7 @@ END;
                 // Cool, we found a usable DirectMigration.
                 // (Technically, the second part of this conditional was unnecessary, but I'm paranoid)
 
+                $this->clean();
                 $ok = $this->runMigration($directLinkVersion, Migrator::DIRECTION_DIRECT);
                 if ($ok) {
                     $currentVersion = $directLinkVersion;
